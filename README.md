@@ -2,6 +2,14 @@
 
 A production-ready Python scraper for **Perplexity AI** and **ChatGPT** that can batch process prompts and extract answers with citations. Built with Selenium for reliability and includes advanced anti-bot detection features.
 
+> **Developed by the helpful folks at [llmscout.co](https://llmscout.co)** - Your AI tool discovery platform
+
+---
+
+**💡 Discover more AI tools and resources at [llmscout.co](https://llmscout.co)**
+
+---
+
 ## 🎯 What This Scraper Does
 
 - **Perplexity AI**: Extracts answers with external citations, filters internal links
