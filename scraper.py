@@ -20,7 +20,7 @@ DEFAULT_PROMPTS = [
 ]
 
 # Optimized timing settings
-ANSWER_WAIT_SECONDS = 120  # Much longer wait for ChatGPT
+ANSWER_WAIT_SECONDS = 180  # Longer wait for Perplexity to complete answers
 PER_PROMPT_DELAY = (3.0, 6.0)  # Shorter delays
 
 def read_prompts(csv_path: Optional[str]) -> List[str]:
@@ -121,7 +121,7 @@ def get_input_element(driver, site_type="perplexity"):
     return None
 
 def wait_for_answer(driver, site_type="perplexity") -> Optional[str]:
-    """Wait for answer to appear with optimized detection"""
+    """Wait for answer to appear and complete with optimized detection"""
     if site_type == "perplexity":
         selectors = [
             "[data-testid='answer']",
@@ -150,6 +150,10 @@ def wait_for_answer(driver, site_type="perplexity") -> Optional[str]:
     print(f"⏰ Will wait up to {ANSWER_WAIT_SECONDS} seconds...")
     
     start_time = time.time()
+    answer_text = None
+    answer_length = 0
+    stable_count = 0
+    
     while time.time() - start_time < ANSWER_WAIT_SECONDS:
         for sel in selectors:
             try:
@@ -160,16 +164,38 @@ def wait_for_answer(driver, site_type="perplexity") -> Optional[str]:
                         # Look for substantial content that's not navigation
                         if (len(text) > 150 and 
                             not any(text.startswith(filter_text) for filter_text in navigation_filters)):
-                            print(f"✅ Found answer: {len(text)} chars")
                             
-                            # For ChatGPT, try to get the full answer via copy button
-                            if site_type == "chatgpt":
-                                full_answer = try_get_full_answer_via_copy(driver)
-                                if full_answer and len(full_answer) > len(text):
-                                    print(f"📋 Got full answer via copy button: {len(full_answer)} chars")
-                                    return full_answer
-                            
-                            return text
+                            # Check if answer is still growing
+                            if answer_text is None:
+                                answer_text = text
+                                answer_length = len(text)
+                                print(f"✅ Found initial answer: {len(text)} chars")
+                            elif len(text) > answer_length:
+                                # Answer is still growing
+                                answer_text = text
+                                answer_length = len(text)
+                                stable_count = 0
+                                print(f"📈 Answer growing: {len(text)} chars")
+                            elif len(text) == answer_length:
+                                # Answer length is stable
+                                stable_count += 1
+                                if stable_count >= 8:  # Wait 8 seconds of stable length for Perplexity
+                                    print(f"✅ Answer stable for 8s: {len(text)} chars")
+                                    
+                                    # For ChatGPT, try to get the full answer via copy button
+                                    if site_type == "chatgpt":
+                                        full_answer = try_get_full_answer_via_copy(driver)
+                                        if full_answer and len(full_answer) > len(text):
+                                            print(f"📋 Got full answer via copy button: {len(full_answer)} chars")
+                                            return full_answer
+                                    
+                                    return text
+                            else:
+                                # Answer length decreased (unusual), reset
+                                answer_text = text
+                                answer_length = len(text)
+                                stable_count = 0
+                                print(f"⚠️  Answer length changed: {len(text)} chars")
                     except:
                         continue
             except:
@@ -178,9 +204,14 @@ def wait_for_answer(driver, site_type="perplexity") -> Optional[str]:
         # Progress indicator
         elapsed = int(time.time() - start_time)
         if elapsed % 10 == 0:
-            print(f"⏳ Waiting... ({elapsed}s elapsed)")
+            print(f"⏳ Waiting... ({elapsed}s elapsed, stable: {stable_count}s)")
         
         time.sleep(1)
+    
+    # If we have an answer but it's not stable, return what we have
+    if answer_text:
+        print(f"⏰ Timeout - returning current answer: {len(answer_text)} chars")
+        return answer_text
     
     print("⏰ Timeout waiting for answer")
     return None
@@ -521,6 +552,12 @@ def ask_one(driver, prompt: str, site_type="perplexity") -> Tuple[str, List[str]
     delay = random.uniform(2.0, 5.0)
     print(f"⏸️  Waiting {delay:.1f}s after getting answer...")
     time.sleep(delay)
+    
+    # Additional wait for Perplexity to ensure answer is fully rendered
+    if site_type == "perplexity":
+        extra_wait = random.uniform(2.0, 4.0)
+        print(f"⏸️  Additional {extra_wait:.1f}s for Perplexity completion...")
+        time.sleep(extra_wait)
     
     return answer.strip(), citations
 
